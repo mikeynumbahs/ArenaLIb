@@ -9,16 +9,16 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.arena.date.DateTools;
+import org.arena.io.Console;
+import org.arena.io.SimpleFile;
+import org.arena.table.GenTable;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jsoup.select.Elements;
-import org.arena.date.DateTools;
-import org.arena.io.Console;
-import org.arena.io.SimpleFile;
-import org.arena.table.GenTable;
 
 public abstract class CachedSoup {
 	protected URL url; 
@@ -66,7 +66,7 @@ public abstract class CachedSoup {
 				return isLoaded = true;
 			} else return handleErr(file);
 		} else {
-			return isLoaded = isCacheFile = loadFromDisk();
+			return isLoaded = loadFromDisk();
 		}
 	}
 	
@@ -135,10 +135,11 @@ public abstract class CachedSoup {
 		File file = getFile();
 		try {
 			page = Jsoup.parse(file, charset);
-			if (DbgFlags.verboseIO) 
+			if (DbgFlags.verboseIO || DbgFlags.verboseLoad) 
 				Console.println("Cache file, " + file.getAbsolutePath() + " Loaded.");
 			
-			isCacheFile = true;
+			checkCache();
+			
 			setLastWrite(file.lastModified());
 		} catch (Exception e) {
 			if (DbgFlags.verboseIO || DbgFlags.verboseLoad) 
@@ -146,6 +147,25 @@ public abstract class CachedSoup {
 			return false;
 		}
 		return true;
+	}
+	
+	
+	protected final void checkCache() {
+		if (this.isErrDoc()) {
+			if (DbgFlags.verboseIO || DbgFlags.verboseLoad) 
+				Console.println("Err Document Loaded");
+			
+			int code = getErrDocCode();
+			if (code == TOO_MANY_REQUESTS
+			|| code == SERVICE_UNAVAILABLE) {
+				if (DbgFlags.verboseIO || DbgFlags.verboseLoad)
+					Console.println("Attempting to ReDownload page");
+				
+				if (downloadPage(url)) {
+					cacheToDisk(true);
+				}
+			}
+		} else isCacheFile = true;	
 	}
 	
 	
