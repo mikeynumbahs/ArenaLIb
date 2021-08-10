@@ -32,6 +32,6 @@ public class InstantList<E> extends ArrayList<E> {
 	
 	@SafeVarargs
 	public final void addAll(int index, E... items) {
-		super.addAll(Arrays.asList(items));
+		super.addAll(index, Arrays.asList(items));
 	}
 }
