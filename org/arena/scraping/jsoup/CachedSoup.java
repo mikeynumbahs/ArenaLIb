@@ -159,7 +159,7 @@ public abstract class CachedSoup {
 			if (code == TOO_MANY_REQUESTS
 			|| code == SERVICE_UNAVAILABLE) {
 				if (DbgFlags.verboseIO || DbgFlags.verboseLoad)
-					Console.println("Attempting to ReDownload page");
+					Console.println("Attempting to refresh cache with previous status code: " + code);
 				
 				if (downloadPage(url)) {
 					cacheToDisk(true);
@@ -407,7 +407,7 @@ public abstract class CachedSoup {
 	}
 	
 	
-	public boolean isErrDoc() {
+	public final boolean isErrDoc() {
 		try {
 			Document page = getPage();
 			boolean title = page.title().equals("CachedSoup Generated Document");
@@ -424,7 +424,7 @@ public abstract class CachedSoup {
 	}
 	
 	
-	public Integer getErrDocCode() {
+	public final Integer getErrDocCode() {
 		try {
 			Document page = getPage();
 			String code = page.getElementsByTag("response").get(0).attr("statuscode");
