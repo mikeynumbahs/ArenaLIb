@@ -7,32 +7,36 @@ import java.util.HashMap;
 import java.util.List;
 
 import org.arena.io.Console;
+import org.arena.math.MathEx;
+import org.arena.table.interfaces.Keys;
+import org.arena.util.ArenaList;
 
-public class GenTable<T> {
+public abstract class GenTable<T, R extends GenTable<T,R>> implements Keys {
 	protected List<List<T>> table = new ArrayList<>();
-	protected List<GenTable<T>> innerTables = new ArrayList<>();
+	protected ArenaList<R> children = new ArenaList<>();
 	
-	private List<Integer> defColMap = new ArrayList<>();
-	private List<Integer> defRowMap = new ArrayList<>();
+	List<Integer> defColMap = new ArrayList<>();
+	List<Integer> defRowMap = new ArrayList<>();
 	
-	private HashMap<Object, String> colKeys = new HashMap<>();
-	private HashMap<Object, String> rowKeys = new HashMap<>();
+	HashMap<Object, String> colKeys = new HashMap<>();
+	HashMap<Object, String> rowKeys = new HashMap<>();
 	
-	private int colId = 0;
-	private int rowId = 0;
-	private int width = 0;
+	//private boolean inited = false;
 	
-	private String name = "";
-	private String type = "";
+	int colId = 0;
+	int rowId = 0;
+	int width = 0;
 	
-	private String lastRowKey = null;
+	String name = "";
+	String type = "";
+	
+	private Object lastRowKey = null;
 	private int lastRowIndex = 0;
 	
-	private String lastColKey = null;
+	private Object lastColKey = null;
 	private int lastColIndex = 0;
 	
-	public GenTable<T> parent = null;
-	
+	public R parent = null;
 	
 	public GenTable(T[][] table) {
 		this(table, "", false);
@@ -78,32 +82,56 @@ public class GenTable<T> {
 		setName(name);
 	}
 
+	@SuppressWarnings("unchecked")
+	public GenTable(GenTable<T,?> genTable) {
+		this.table = genTable.table;
+		this.name = genTable.name;
+		this.type = genTable.type;
+		this.width = genTable.width;
+		this.colKeys = genTable.colKeys;
+		this.rowKeys = genTable.rowKeys;
+		this.colId = genTable.colId;
+		this.rowId = genTable.rowId;
+		this.defColMap = genTable.defColMap;
+		this.defRowMap = genTable.defRowMap;
+		
+		this.children = (ArenaList<R>)genTable.children;
+		//this.inited = genTable.inited;
+	}
 	
-	public final GenTable<T> setTable(List<T[]> table) {
+	
+	private GenTable() {
+		
+	}
+	
+	public R setTable(List<T[]> table) {
 		return setTable(table, false);
 	}
 	
 	
-	public final GenTable<T> setTable(List<T[]> table, boolean hasHeader) {
-		this.table.clear();
-		if (table.size() == 0) return this;
+	@SuppressWarnings("unchecked")
+	public R setTable(List<T[]> table, boolean hasHeader) {
+		if (table.size() == 0)
+			throw new EmptyListException();
 		
+		this.table.clear();
 		this.table = makeList(table);
 		initKeys();
 		
 		if (hasHeader) {
 			setColKeys(this.table.remove(0));
 		}
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final GenTable<T> setTable(T[][] table) {
+	public R setTable(T[][] table) {
 		return setTable(table, false);
 	}
 	
 	
-	public final GenTable<T> setTable(T[][] table, boolean hasHeader) {
+	@SuppressWarnings("unchecked")
+	public R setTable(T[][] table, boolean hasHeader) {
 		this.table.clear();
 		
 		this.table = makeList(table);
@@ -112,15 +140,16 @@ public class GenTable<T> {
 		if (hasHeader) 
 			setColKeys(this.table.remove(0));
 		
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final List<GenTable<T>> getAllTables() {
-		List<GenTable<T>> all = new ArrayList<>();
+	@SuppressWarnings("unchecked")
+	public List<R> getAllTables() {
+		List<R> all = new ArrayList<>();
 		if (this.table.size() > 0)
-			all.add(this);
-		for (GenTable<T> child : innerTables) 
+			all.add((R)this);
+		for (R child : children) 
 			all.addAll(child.getAllTables());
 		return all;
 	}
@@ -131,23 +160,25 @@ public class GenTable<T> {
 	}
 	
 	
-	public final GenTable<T> importTable(Object[][] table, boolean hasHeader) {
+	@SuppressWarnings("unchecked")
+	public R importTable(Object[][] table, boolean hasHeader) {
 		this.table.clear();
 		this.table = makeList(convert(table));
 		
 		initKeys();
 		if (hasHeader) 
 			setColKeys(this.table.remove(0));
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final GenTable<T> setName(String name) {
+	@SuppressWarnings("unchecked")
+	public R setName(String name) {
 		this.name = name == null ? "" : name;
-		return this;
+		return (R)this;
 	}
 	
-	
+
 	public final String getName() {
 		return name.isBlank() ? "<Unnamed>" : ""+name;
 	}
@@ -174,6 +205,7 @@ public class GenTable<T> {
 		}
 		
 		width = colId;
+		//inited = true;
 	}
 	
 	
@@ -218,6 +250,9 @@ public class GenTable<T> {
 	
 	
 	public final GenColumn<T> remCol(int index) {
+		if (index < 0 || index >= width)
+			return null;
+		
 		List<T> removed = new ArrayList<>();
 	
 		for (int i = 0; i < table.size(); i++) {
@@ -246,10 +281,21 @@ public class GenTable<T> {
 	}
 	
 	
-	public final GenTable<T> remColKeys() {
+	@SuppressWarnings("unchecked")
+	public final R remColKeys() {
 		colKeys.clear();
 		lastColKey = null;
-		return this;
+		return (R)this;
+	}
+	
+	
+	public final void clearColKeys() {
+		colKeys.clear();
+	}
+	
+	
+	public final void clearRowKeys() {
+		rowKeys.clear();
 	}
 	
 	
@@ -292,7 +338,9 @@ public class GenTable<T> {
 		for (int i = 0; i < mapTo.size(); i++) {
 			try {
 				setColKey(mapTo.get(i).toString(), defColMap.get(i));
-			} catch (Exception OOB) {}
+			} catch (Exception OOB) {
+				//OOB.printStackTrace();
+			}
 		}
 		
 		return true;
@@ -300,6 +348,10 @@ public class GenTable<T> {
 	
 	
 	public final boolean setColKey(Object mapTo, int col) {
+		if (this.getColKeys().contains(mapTo.toString())) {
+			return false;
+		}
+		
 		colKeys.put(defColMap.get(col), mapTo.toString());
 		if (col == lastColIndex) lastColKey = null;
 		return true;
@@ -320,7 +372,7 @@ public class GenTable<T> {
 
 	
 	public final boolean setRowKeys(List<T> mapTo) {
-		if (mapTo.size() != table.size()) 
+		if (mapTo.size() != table.size())
 			return false;
 		
 		for (int i = 0; i < mapTo.size(); i++) {
@@ -332,6 +384,8 @@ public class GenTable<T> {
 
 	
 	public final boolean setRowKey(Object mapTo, int row) {
+		if (getRowKeys().contains(mapTo.toString()))
+				return false;
 		rowKeys.put(defRowMap.get(row), mapTo.toString());
 		if (lastRowIndex == row) lastRowKey = null;
 		return true;
@@ -343,10 +397,11 @@ public class GenTable<T> {
 	}
 	
 	
-	public final GenTable<T> remRowKeys() {
+	@SuppressWarnings("unchecked")
+	public final R remRowKeys() {
 		rowKeys.clear();
 		lastRowKey = null; 
-		return this;
+		return (R)this;
 	}
 	
 	
@@ -400,6 +455,9 @@ public class GenTable<T> {
 		if (col.size() != table.size())
 			return false;
 	
+		if (type.isEmpty())
+			setType(col.toArray());
+		
 		for (int i = 0; i < table.size(); i++) {
 			try {
 				table.get(i).add(index, col.get(i));
@@ -412,8 +470,8 @@ public class GenTable<T> {
 		
 		if (lastColKey != null)
 			lastColIndex += index <= lastColIndex ? 1 : 0;
-		width++;
 		
+		width++;
 		return true;
 	}
 	
@@ -488,7 +546,6 @@ public class GenTable<T> {
 			return insertRow(row, index, false);
 	}
 	
-	
 	public final boolean insertRow(GenRow<T> row, int index, boolean force) {
 		if (width != 0 && !force) {
 			if (index > table.size() || row.size() > width)
@@ -496,7 +553,6 @@ public class GenTable<T> {
 		}
 		
 		table.add(index, row);
-		
 		if (force && row.size() > width) {
 			while (defColMap.size() < row.size()) {
 				defColMap.add(colId++);
@@ -504,11 +560,11 @@ public class GenTable<T> {
 			width = defColMap.size();
 		}
 		
-		//If table size equals 1 then this needs to be initialized
-		if (table.size() == 1)
-			initKeys();
 		
-		defRowMap.add(index, rowId++);
+		if (getLength() == 1 && !hasColKeys())
+			initKeys();
+
+		defRowMap.add(rowId++);
 		if (row.hasLabel()) 
 			rowKeys.put(rowId-1, row.getLabel());
 		
@@ -556,6 +612,26 @@ public class GenTable<T> {
 		}
 		return success;
 	}
+
+	
+	public final void setCell(int row, int col, T value) {
+		table.get(row).set(col, value);
+	}
+	
+	
+	public final void setCell(int row, String colKey, T value) {
+		table.get(row).set(getColIndex(colKey), value);
+	}
+	
+	
+	public final void setCell(Object rowKey, int col, T value) {
+		table.get(getRowIndex(rowKey)).set(col, value);
+	}
+	
+	
+	public final void setCell(String rowKey, String colKey, T value) {
+		table.get(getRowIndex(rowKey)).set(getColIndex(colKey), value);
+	}
 	
 	
 	public final T getCell(int row, int col) {
@@ -575,26 +651,6 @@ public class GenTable<T> {
 	
 	public final T getCell(String rowKey, String colKey) {
 		return table.get(getRowIndex(rowKey)).get(getColIndex(colKey));
-	}
-
-
-	public final void setCell(int row, int col, T value) {
-		table.get(row).set(col, value);
-	}
-	
-	
-	public final void setCell(int row, String colKey, T value) {
-		table.get(row).set(getColIndex(colKey), value);
-	}
-	
-	
-	public final void setCell(String rowKey, int col, T value) {
-		table.get(getRowIndex(rowKey)).set(col, value);
-	}
-	
-	
-	public final void setCell(String rowKey, String colKey, T value) {
-		table.get(getRowIndex(rowKey)).set(getColIndex(colKey), value);
 	}
 	
 	
@@ -639,7 +695,7 @@ public class GenTable<T> {
 		return null;
 	}
 	
-	public final Integer getRowIndex(String rowKey) {
+	public final Integer getRowIndex(Object rowKey) {
 		if (rowKeys.size() == 0) return null;
 		
 		if (lastRowKey != null && lastRowKey.equals(rowKey)) 
@@ -672,8 +728,9 @@ public class GenTable<T> {
 			if (colKeys.get(key).equals(colKey)) {
 				lastColKey = colKey;
 				lastColIndex = defColMap.indexOf(key);
-				return lastColIndex + 0;
-			}
+				
+				return lastColIndex;
+			} 
 		}
 	
 		return null;
@@ -681,7 +738,7 @@ public class GenTable<T> {
 	
 	
 	public final KeyedCell<T> getKeyedCell(int index, String key) {
-		return new KeyedCell<T>(getCell(index, key), key);
+		return new KeyedCell<T>(getCell(index, key), key, null);
 	}
 	
 	
@@ -695,45 +752,49 @@ public class GenTable<T> {
 	}
 	
 	
-	public final GenTable<T> addTable(GenTable<T> child) {
-		return addTable(innerTables.size(), child);
+	public R addTable(R child) {
+		return addTable(children.size(), child);
 	}
 	
 	
-	public final GenTable<T> addTable(int index, GenTable<T> child) {
-		innerTables.add(index, child);
-		child.parent = this;
-		return this;
+	@SuppressWarnings("unchecked")
+	public R addTable(int index, R child) {
+		if (child != null) {
+			children.add(index, child);
+			child.parent = (R)this;
+		}
+		return (R)this;
 	}
 	
 	
-	public final Boolean hasChild() {
-		return innerTables.size() > 0;
+	public Boolean hasChild() {
+		return children.size() > 0;
 	}
 	
 	
-	public final GenTable<T> clearChildren() {
-		innerTables.clear();
-		return this;
+	@SuppressWarnings("unchecked")
+	public R clearChildren() {
+		children.clear();
+		return (R)this;
 	}
 	
 	
 	public final Integer getChildCount() {
-		return innerTables.size();
+		return children.size();
 	}
 	
 	
-	public final List<GenTable<T>> getChildren() {
-		return innerTables;
+	public final ArenaList<R> getChildren() {
+		return children;
 	}
 	
 	
-	public final GenTable<T> getChildByName(String name) {
-		for (GenTable<T> t : innerTables) {
+	public final R getChildByName(String name) {
+		for (R t : children) {
 			try {
 				if (t.getName().equals(name)) return t;
 				else {
-					GenTable<T> table = t.getChildByName(name);
+					R table = t.getChildByName(name);
 					if (table !=  null) return table;
 				}
 			} catch (Exception e) {}
@@ -749,7 +810,7 @@ public class GenTable<T> {
 	
 	public final Integer getTotalChildCount() {
 		int count = 0;
-		for (GenTable<?> t : innerTables) {
+		for (R t : children) {
 			count += t.getTotalChildCount();
 			count++;
 		}
@@ -757,9 +818,9 @@ public class GenTable<T> {
 	}
 	
 	
-	public final GenTable<T> removeChildByIndex(int x) {
-		if (x >= 0 && x < innerTables.size()) {
-			GenTable<T> child = innerTables.remove(x);
+	public final R removeChildByIndex(int x) {
+		if (x >= 0 && x < children.size()) {
+			R child = children.remove(x);
 			child.parent = null;
 			return child;
 		}
@@ -767,9 +828,9 @@ public class GenTable<T> {
 	}
 	
 	
-	public final GenTable<T> removeChildByName(String name) {
-		for (int i = 0; i < innerTables.size(); i++) {
-			GenTable<T> table = innerTables.get(i);
+	public final R removeChildByName(String name) {
+		for (int i = 0; i < children.size(); i++) {
+			R table = children.get(i);
 			if (table.getName().equals(name)) {
 				return removeChildByIndex(i);
 			} else if (table.hasChild()) {
@@ -780,7 +841,7 @@ public class GenTable<T> {
 	}
 	
 	
-	public final GenTable<T> removeChild(GenTable<T> child) {
+	public final R removeChild(R child) {
 		if (this.getChildren().remove(child))
 			return child;
 		return null;
@@ -788,58 +849,70 @@ public class GenTable<T> {
 	
 	
 	public final String getTableType() {
-		return ""+type;
+		return type;
 	}
 	
 	
-	public final GenTable<T> sortAsString() {
+	public final R sortAsString() {
 		return sortAsString(0);
 	}
 	
 	
-	public final GenTable<T> sortAsString(int colIndex) {
+	public final R sortAsString(int colIndex) {
 		return sort((a, b) -> a.toString().compareTo(b.toString()), colIndex);
 	}
 	
 	
-	public final GenTable<T> sort() {
+	public R sort() {
 		return sort(0);
 	}
 	
 	
-	public final GenTable<T> sort(int colIndex) {
+	public final R sort(int colIndex) {
 		return sort(false, colIndex);
 	}
 	
 	
 	@SuppressWarnings("unchecked")
-	public final GenTable<T> sort(boolean ascending, int colIndex) {
+	public final R sort(boolean ascending, int colIndex) {
 		return sort((a, b) -> ascending ? ((Comparable<T>)a).compareTo(b) 
 										: ((Comparable<T>)b).compareTo(a), colIndex);
 	}
 	
 	
-	public final GenTable<T> sortAsString(String colKey) {
+	public final R sortAsString(String colKey) {
 		return sortAsString(getColIndex(colKey));
 	}
 	
 	
-	public final GenTable<T> sort(String colKey) {
+	public final R sort(String colKey) {
 		return sort(false, getColIndex(colKey));
 	}
 	
 	
-	public final GenTable<T> sort(boolean ascending, String colKey) {
+	public final R sort(boolean ascending, String colKey) {
 		return sort(ascending, getColIndex(colKey));
 	}
 	
 	
-	public final GenTable<T> sort(Comparator<T> comp, String colKey) {
+	public final R sort(Comparator<T> comp, String colKey) {
 		return sort(comp, getColIndex(colKey));
 	}
 	
 	
-	public final GenTable<T> sort(Comparator<T> comp, int colIndex) {
+	public final R sort(Comparator<T> comp, String... colKeys) {
+		int[] indices = new int[colKeys.length];
+		
+		for (int i = 0; i < colKeys.length; i++) {
+			indices[i] = getColIndex(colKeys[i]);
+		}
+		
+		return sort(comp, indices);
+	}
+	
+	
+	@SuppressWarnings("unchecked")
+	public final R sort(Comparator<T> comp, int colIndex) {
 		HashMap<String, Integer> rowState = new HashMap<>();
 		for (int i = 0; i < table.size(); i++) {
 			rowState.put(table.get(i).toString(), defRowMap.get(i));
@@ -853,19 +926,46 @@ public class GenTable<T> {
 		}
 		
 		defRowMap = newRowHeader;
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final GenTable<T> reverse() {
+	@SuppressWarnings("unchecked")
+	public final R sort(Comparator<T> comp, final int... colIndex) {
+		HashMap<String, Integer> rowState = new HashMap<>();
+		for (int i = 0; i < table.size(); i++) {
+			rowState.put(table.get(i).toString(), defRowMap.get(i));
+		}
+		
+		table.sort((a, b) -> {
+			double eval = 0;
+			for (int i = 0; i < colIndex.length; i++) {
+				eval += (10d/MathEx.factorial(i+1))*comp.compare(a.get(colIndex[i]), b.get(colIndex[i]));
+			}
+			return eval == 0 ? 0 : (int)(eval/(Math.abs(eval)));
+		});
+		
+		List<Integer> newRowHeader = new ArrayList<>();
+		for (int i = 0; i < table.size(); i++) {
+			newRowHeader.add(rowState.get(table.get(i).toString()));
+		}
+		
+		defRowMap = newRowHeader;
+		return (R)this;
+	}
+	
+	
+	@SuppressWarnings("unchecked")
+	public final R reverse() {
 		Collections.reverse(table);
 		Collections.reverse(defRowMap);
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final GenTable<T> wrapLeft(int steps) {
-		if (steps % width == 0) return this;
+	@SuppressWarnings("unchecked")
+	public final R wrapLeft(int steps) {
+		if (steps % width == 0) return (R)this;
 		if (steps < 0) return wrapRight(-1*steps);
 		
 		int fixed = steps;
@@ -876,12 +976,13 @@ public class GenTable<T> {
 			GenColumn<T> col = remCol(0);
 			insertCol(col);
 		}
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final GenTable<T> wrapRight(int steps) {
-		if (steps % width == 0) return this;
+	@SuppressWarnings("unchecked")
+	public final R wrapRight(int steps) {
+		if (steps % width == 0) return (R)this;
 		if (steps < 0) return wrapLeft(-1*steps);
 		
 		int fixed = steps;
@@ -892,12 +993,13 @@ public class GenTable<T> {
 			GenColumn<T> col = remCol(width - 1);
 			insertCol(col, 0);
 		}
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final GenTable<T> wrapUp(int steps) {
-		if (steps % table.size() == 0) return this;
+	@SuppressWarnings("unchecked")
+	public final R wrapUp(int steps) {
+		if (steps % table.size() == 0) return (R)this;
 		if (steps < 0) return wrapDown(-1*steps);
 		
 		int fixed = steps;
@@ -908,12 +1010,13 @@ public class GenTable<T> {
 			GenRow<T> row = remRow(0);
 			insertRow(row);
 		}
-		return this;
+		return (R)this;
 	}
 	
 	
-	public final GenTable<T> wrapDown(int steps) {
-		if (steps % table.size() == 0) return this;
+	@SuppressWarnings("unchecked")
+	public final R wrapDown(int steps) {
+		if (steps % table.size() == 0) return (R)this;
 		if (steps < 0) return wrapUp(-1*steps);
 		
 		int fixed = steps;
@@ -924,7 +1027,7 @@ public class GenTable<T> {
 			GenRow<T> row = remRow(table.size()-1);
 			insertRow(row, 0);
 		}
-		return this;
+		return (R)this;
 	}
 	
 	
@@ -971,7 +1074,7 @@ public class GenTable<T> {
 	
 	
 	@SuppressWarnings("unchecked")
-	public final GenTable<T> extract(List<String> keys) {
+	public GenTable<T,R> extract(List<String> keys) {
 		List<T[]> extract = new ArrayList<>();
 		
 		for (int i = 0; i < getLength(); i++) {
@@ -987,19 +1090,19 @@ public class GenTable<T> {
 			extract.add((T[])cells.toArray());
 		}
 		
-		GenTable<T> genTable = new GenTable<T>(extract, false);
+		GenTable<T,R> genTable = new GenTable<T,R>(extract, false){};
 		genTable.setColKeys(keys.toArray());
 		return genTable;
 	}
 	
 	
 	public final void printTable() {
-		if (table != null && table.size() > 0) {
+		if (table != null) {
 			Console.println(getParentTreeLabel() + "::" + getName());
 			
 			List<Integer> widths = getColWidths(5);
 			List<String> header = new ArrayList<>();
-			//Console.println(widths);
+
 			header.add("");
 			for (int i = 0; i < defColMap.size(); i++) {
 				String headerItem = colKeys.get(defColMap.get(i));
@@ -1007,6 +1110,7 @@ public class GenTable<T> {
 				header.add(headerItem);
 			}
 			
+
 			if (this.hasColKeys())
 				Console.printf(getLineFormat(widths, header), header.toArray());
 			
@@ -1016,7 +1120,8 @@ public class GenTable<T> {
 				String rowLabel = rowKeys.get(defRowMap.get(row));
 				printLine.add(rowLabel == null ? ""+row : rowLabel);
 				for (int i = 0; i < line.size(); i++) {
-					printLine.add(line.get(i) == null ? "null" : line.get(i).toString());
+					T item = formatCell(line.get(i));
+					printLine.add(item == null ? "-" : item.toString());
 				}
 				Console.printf(getLineFormat(widths, printLine), printLine.toArray());
 			}
@@ -1024,12 +1129,12 @@ public class GenTable<T> {
 	
 		if (getChildCount() > 0) 
 			for (int i = 0; i < getChildCount(); i++) 
-				innerTables.get(i).printTable();
+				children.get(i).printTable();
 	}
 	
 	
 	public final List<String> getParentTree() {
-		GenTable<?> temp = this.parent;
+		R temp = this.parent;
 		List<String> parents = new ArrayList<>();
 		
 		while (temp != null) {
@@ -1070,9 +1175,10 @@ public class GenTable<T> {
 		for (int i = 0; i < table.size(); i++) {
 			for (int w = 0; w < table.get(i).size(); w++) {
 				if (widths.size() == w) 
-					widths.add(0);
+					widths.add(padding);
 				
-				T cell = table.get(i).get(w);
+				T cell = formatCell(table.get(i).get(w));
+				
 				String item = cell == null ? "" : cell.toString();
 				int strWidth = item.length() + padding;
 				if (widths.get(w) < strWidth)
@@ -1090,9 +1196,19 @@ public class GenTable<T> {
 		}
 		
 		//ADD ROW HEADER LENGTH TO TOP OF LIST
-		widths.add(0, vHeaderLen);
-		
+		widths.add(0, vHeaderLen == 0 ? padding : vHeaderLen);
 		return widths;
+	}
+	
+	
+	@SuppressWarnings("unchecked")
+	private T formatCell(T cell) {
+		T formatted = cell;
+		if (cell != null && cell instanceof Number) {
+			Double rounded = MathEx.round((Double)cell, 2);
+			formatted = (T)rounded;
+		}
+		return formatted;
 	}
 	
 	
@@ -1110,7 +1226,7 @@ public class GenTable<T> {
 		List<List<T>> converted = new ArrayList<>();
 		
 		if (type.isEmpty()) 
-			type = table.get(0).getClass().getSimpleName().replaceAll("\\[|\\]", "");
+			setType(table);
 		
 		for (T[] row : table) {
 			List<T> newRow = new ArrayList<>();
@@ -1126,7 +1242,7 @@ public class GenTable<T> {
 		List<List<T>> converted = new ArrayList<>();
 		
 		if (type.isEmpty()) 
-			type = table.getClass().getSimpleName().replaceAll("\\[|\\]", "");
+			setType(table);
 		
 		for (T[] row : table) {
 			List<T> newRow = new ArrayList<>();
@@ -1135,6 +1251,21 @@ public class GenTable<T> {
 			converted.add(newRow);
 		}
 		return converted;
+	}
+	
+	
+	private void setType(List<T[]> table) {
+		setType(table.get(0));
+	}
+	
+	
+	private void setType(Object[][] table) {
+		type = table.getClass().getSimpleName().replaceAll("\\[|\\]", "");
+	}
+	
+	
+	private void setType(Object[] table) {
+		type = table.getClass().getSimpleName().replaceAll("\\[|\\]", "");
 	}
 	
 	
@@ -1198,6 +1329,43 @@ public class GenTable<T> {
 	}
 	
 	
+	private void convertKeys(Keys convertTo, boolean column) {
+		for (GenTable<T,R> table : getAllTables()) {
+			List<String> methods = getKeyMethodNames();
+			for (String method : methods) {
+				try {
+					String from = table.invoke(method).toString();
+					String to = convertTo.invoke(method).toString();
+					
+					if (to != null && from != null) {
+						int idx = column ? table.getColIndex(from) : table.getRowIndex(from);
+						if (column) {
+							table.setColKey(to, idx);
+						} else {
+							table.setRowKey(to, idx);
+						}
+					}
+				} catch (NullPointerException npe) {
+					//npe.printStackTrace();
+				} catch (Exception huh) {
+					huh.printStackTrace();
+					
+				}
+			}
+		}
+	}
+	
+	
+	public void convertColKeys(Keys convertTo) {
+		convertKeys(convertTo, true);
+	}
+	
+	
+	public void convertRowKeys(Keys convertTo) {
+		convertKeys(convertTo, false);
+	}
+	
+	
 	@SuppressWarnings("unchecked")
 	public T cast(Object obj) {
 		if (obj == null) return null;
@@ -1215,5 +1383,30 @@ public class GenTable<T> {
 			default:
 				return (T)conv;
 		}
+	}
+	
+	
+	@SuppressWarnings("unchecked")
+	@Override
+	public R clone() {
+		List<T[]> list = new ArrayList<>();
+		for (int i = 0; i < table.size(); i++) {
+			List<T> row = table.get(i);
+			list.add((T[])row.toArray());
+		}
+		
+		GenTable<T,R> clone = list.isEmpty() ? new GenTable<T,R>(){} : new GenTable<T,R>(list){};
+		if (name != null || !name.isBlank()) {
+			clone.setName(name);
+		}
+		
+		if (hasColKeys()) clone.setColKeys(getColKeys().toArray());
+		if (hasRowKeys()) clone.setRowKeys(getRowKeys().toArray());
+		clone.type = type;
+		
+		for (R child : children)
+			clone.addTable(child.clone());
+		
+		return (R)clone;
 	}
 }

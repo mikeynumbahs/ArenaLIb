@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.arena.util.LabeledList;
 
-public class GenColumn<T> extends LabeledList<T>{
+public class GenColumn<T> extends LabeledList<Object, T>{
 
 	private static final long serialVersionUID = 7415164315062792530L;
 
