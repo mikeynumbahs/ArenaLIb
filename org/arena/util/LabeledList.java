@@ -2,11 +2,11 @@ package org.arena.util;
 
 import java.util.List;
 
-public class LabeledList<T> extends InstantList<T> {
+public class LabeledList<L,T> extends ArenaList<T> {
 	
 	private static final long serialVersionUID = 6977475071832591333L;
 	
-	Object labelObj;
+	L labelObj;
 	String label;
 
 	
@@ -14,6 +14,12 @@ public class LabeledList<T> extends InstantList<T> {
 		super();
 	}
 
+	
+	public LabeledList(L label, T item) {
+		super(item);
+		setLabel(label);
+	}
+	
 	
 	@SafeVarargs
 	public LabeledList(T... list) {
@@ -26,26 +32,26 @@ public class LabeledList<T> extends InstantList<T> {
 	}
 	
 	
-	public LabeledList(Object label) {
+	public LabeledList(L label) {
 		super();
 		setLabel(label);
 	}
 	
 	
 	@SafeVarargs
-	public LabeledList(Object label, T... list) {
+	public LabeledList(L label, T... list) {
 		this(list);
 		setLabel(label);
 	}
 	
 	
-	public LabeledList(Object label, List<T> list) {
+	public LabeledList(L label, List<T> list) {
 		this(list);
 		setLabel(label);
 	}
 	
 	
-	public void setLabel(Object label) {
+	public void setLabel(L label) {
 		labelObj = label;
 		if (labelObj != null)
 			this.label = label.toString();
@@ -64,6 +70,13 @@ public class LabeledList<T> extends InstantList<T> {
 	
 	public Object getObject() {
 		return labelObj;
+	}
+	
+	
+	@Override
+	public LabeledList<L,T> clone() {
+		LabeledList<L,T> clone = new LabeledList<>(labelObj, this);
+		return clone;
 	}
 	
 	
