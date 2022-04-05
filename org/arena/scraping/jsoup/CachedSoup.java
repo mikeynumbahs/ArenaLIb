@@ -6,13 +6,18 @@ import java.io.StringWriter;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.HashMap;
 import java.util.List;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.arena.date.DateTools;
 import org.arena.io.Console;
 import org.arena.io.SimpleFile;
-import org.arena.table.GenTable;
+import org.arena.table.StringTable;
+import org.arena.util.ArenaList;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 import org.jsoup.Connection;
 import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
@@ -24,15 +29,21 @@ public abstract class CachedSoup {
 	protected URL url; 
 	private File file;
 	private Calendar lastWrite;
+	private boolean jsonLoaded = false;
 	protected boolean isCacheFile = false;
 	protected boolean isLoaded = false;
 	protected boolean wasCached = false;
 	
 	protected Document page;
 	
-	public final List<GenTable<String>> tables;
+	public final ArenaList<StringTable> tables;
+	public final HashMap<String, JSONObject> jsonObjects;
+	public final HashMap<URL, String> jsonLinks;
 	
 	protected String charset = "UTF-8";
+	protected boolean stripScripts = false;
+	protected boolean stripStyles = false;
+	
 	protected int cacheFrequency = 12;
 	protected int maxAttempts = 5;
 	protected long retrySleep = 2000;
@@ -41,14 +52,16 @@ public abstract class CachedSoup {
 	abstract protected String getCacheRootDir();
 	abstract protected String getFileExt();
 	abstract protected boolean isVolatile();
-	abstract protected boolean stripScripts();
+	
 	
 	public static final int TOO_MANY_REQUESTS = 429;
 	public static final int SERVICE_UNAVAILABLE = 503;
 	
 	public CachedSoup(URL url) {
 		this.url = url;
-		this.tables = new ArrayList<>();
+		tables = new ArenaList<>();
+		jsonObjects = new HashMap<>();
+		jsonLinks = new HashMap<>();
 	}
 	
 	public CachedSoup(URL url, String charset) {
@@ -59,10 +72,13 @@ public abstract class CachedSoup {
 	
 	public boolean load() {
 		if (isLoaded && !Options.refresh) return true;
-		if (!Options.workOffline 
+		if (!Options.workOffline
+		&& !Options.readOnly
 		&& (!fileUpToDate() || Options.refresh) ) {
 			if (downloadPage(url)) {
+				addJsonSources();
 				wasCached = cacheToDisk();
+				isCacheFile = false;
 				return isLoaded = true;
 			} else return handleErr(file);
 		} else {
@@ -83,7 +99,7 @@ public abstract class CachedSoup {
 	}
 	
 	
-	protected String getFileName() {
+	public String getFileName() {
 		String fileName = getURL().toString().replaceAll("[\\?\\%]", ".")	
 								  .replace(getDomain(), getCacheRootDir())
 								  .replaceAll("\\/+", File.separator);
@@ -93,39 +109,77 @@ public abstract class CachedSoup {
 
 	
 	protected boolean downloadPage(URL url) {
+		return (page = download(url)) != null;
+	}
+	
+	
+	public void addJsonLink(URL url, String name) {
+		jsonLinks.put(url, name);
+	}
+	
+	
+	protected String downloadJson(URL url) {
+		Document doc = download(url);
+		
+		String json = "";
+		if (doc != null && !isErrDoc(doc)) {
+			json = doc.body().toString();
+		}
+		return json;
+	}
+	
+	
+	private void addJsonSources() {
+		for (URL url : jsonLinks.keySet()) {
+			String text = downloadJson(url);
+			
+			Element tag = new Element("json");
+			tag.id(jsonLinks.get(url));
+			tag.html(text);
+			page.appendChild(tag);
+		}
+	}
+	
+	
+	private Document download(URL url) {
 		int attempts = 0;
 		
 		do {
-			if (attempts > 0 && DbgFlags.verboseLoad) 
+			if (attempts > 0 && Debug.verboseLoad) 
 				Console.println("Download attempt #" + (attempts+1));
 			
 			try {
 				Connection conn = Jsoup.connect(url.toString());
-				this.page = Jsoup.parse(conn.get().html(), charset);
-				return true;
+				conn.userAgent("Mozilla/5.0 (X11; Linux x86_64; rv:78.0) Gecko/20100101 Firefox/78.0");
+				conn.ignoreContentType(true);
+				conn.referrer(getDomain());
+				conn.header("Connection", "keep-alive")
+					.header("Accept-Encoding", "gzip, deflate")
+					.header("Accept-Language", "en-US,en;q=0.5");
+				return Jsoup.parse(conn.get().html(), charset);
 			} catch (Exception e) {
 				if (e instanceof HttpStatusException) {
 					HttpStatusException hse = (HttpStatusException)e;
 					int status = hse.getStatusCode();
-					this.page = CachedSoup.makeErrDoc(hse);
+					Document err = CachedSoup.makeErrDoc(hse);
 					
 					if (status != TOO_MANY_REQUESTS
 					&& status != SERVICE_UNAVAILABLE) {
-						return true;
+						return err;
 					}
 				}
 				
-				if (DbgFlags.verboseIO || DbgFlags.verboseLoad) 
+				if (Debug.verboseIO || Debug.verboseLoad) 
 					e.printStackTrace();
 			}
 			
 			sleep(retrySleep);
 		} while (attempts++ < maxAttempts);
-		return false;
+		return null;
 	}
-
 	
-	private void sleep(long ms) {
+	
+	public void sleep(long ms) {
 		long start = Calendar.getInstance().getTimeInMillis();
 		while ((Calendar.getInstance().getTimeInMillis() - start) < ms);
 	}
@@ -135,14 +189,14 @@ public abstract class CachedSoup {
 		File file = getFile();
 		try {
 			page = Jsoup.parse(file, charset);
-			if (DbgFlags.verboseIO || DbgFlags.verboseLoad) 
+			if (Debug.verboseIO || Debug.verboseLoad) 
 				Console.println("Cache file, " + file.getAbsolutePath() + " Loaded.");
 			
 			checkCache();
 			
 			setLastWrite(file.lastModified());
 		} catch (Exception e) {
-			if (DbgFlags.verboseIO || DbgFlags.verboseLoad) 
+			if (Debug.verboseIO || Debug.verboseLoad) 
 				e.printStackTrace();
 			return false;
 		}
@@ -151,21 +205,31 @@ public abstract class CachedSoup {
 	
 	
 	protected final void checkCache() {
-		if (this.isErrDoc()) {
-			if (DbgFlags.verboseIO || DbgFlags.verboseLoad) 
+		if (isErrDoc()) {
+			if (Debug.verboseIO || Debug.verboseLoad) 
 				Console.println("Err Document Loaded");
 			
 			int code = getErrDocCode();
 			if (code == TOO_MANY_REQUESTS
 			|| code == SERVICE_UNAVAILABLE) {
-				if (DbgFlags.verboseIO || DbgFlags.verboseLoad)
-					Console.println("Attempting to refresh cache with previous status code: " + code);
+				if (Debug.verboseIO || Debug.verboseLoad)
+					Console.println("Attempting to refresh cache with previous status code:  " + code);
 				
 				if (downloadPage(url)) {
 					cacheToDisk(true);
 				}
 			}
 		} else isCacheFile = true;	
+	}
+	
+	
+	public void stripScripts(boolean stripScripts) {
+		this.stripScripts = stripScripts;
+	}
+	
+	
+	public void stripStyles(boolean stripStyles) {
+		this.stripStyles = stripStyles;
 	}
 	
 	
@@ -176,10 +240,10 @@ public abstract class CachedSoup {
 	
 	protected boolean cacheToDisk(boolean forced) {
 		File file = getFile();
-		if (!forced && !Options.refresh && fileUpToDate())
+		if (!forced && !Options.refresh && fileUpToDate() && !Options.readOnly)
 			return false;
 	
-		if (DbgFlags.verboseIO) 
+		if (Debug.verboseIO) 
 			Console.println("Cache file being written: " + file.getAbsolutePath());
 		
 		if (SimpleFile.write(file.getAbsolutePath(), makeFile())) {
@@ -192,8 +256,11 @@ public abstract class CachedSoup {
 	
 	
 	protected String makeFile() {
-		if (stripScripts())
+		if (stripScripts)
 			page.select("script").remove();
+		
+		if (stripStyles)
+			page.select("style").remove();
 		
 		return page.toString();
 	}
@@ -242,7 +309,12 @@ public abstract class CachedSoup {
 	
 	public final boolean fileUpToDate() {
 		File file = getFile();
-		if (!file.exists()) return false;
+		if (!file.exists()) {
+			return false;
+		} else {
+			if (Options.readOnly) return true;
+		}
+		
 		if (!isVolatile()) return true;
 		
 		Calendar now = Calendar.getInstance();
@@ -291,16 +363,34 @@ public abstract class CachedSoup {
 	}
 	
 	
+	public void loadJson() {
+		if (jsonLoaded == true) 
+			return;
+		
+		JSONParser parser = new JSONParser();
+		getPage().select("json").forEach(ele -> {
+			try {
+				String id = ele.attr("id");
+				JSONObject obj = (JSONObject)parser.parse(ele.text());
+				jsonObjects.put(id, obj);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		});
+		
+		jsonLoaded = true;
+	}
+	
+	
 	public void loadTables() {
 		loadTables(false);
 	}
 	
 	
-	public void loadTables(final boolean retainHtml) {
+	public void loadTables(boolean retainHtml) {
 		tables.clear();
 	
-		getPage().select("table").stream()
-			.forEach(e -> {
+		getPage().select("table").forEach(e -> {
 				String tableName = "";
 				
 				List<String[]> rh = new ArrayList<>();
@@ -314,6 +404,7 @@ public abstract class CachedSoup {
 							tableName = suspectedName[0];
 						header = headerRows;
 					}
+					
 					String[] aheader = getTableRow(header.get(0), false, retainHtml);
 					if (aheader == null || aheader.length == 0)
 						aheader = getTableRow(header.get(0), true, retainHtml);
@@ -323,14 +414,31 @@ public abstract class CachedSoup {
 					else hasHeader = false;
 				}
 				
+				
 				Elements rows = e.getElementsByTag("tr");
 				for (int i = hasHeader ? 1 : 0; i < rows.size(); i++) {
 					String[] arow = getTableRow(rows.get(i), true, retainHtml);
 					rh.add(arow);
 				}
-				GenTable<String> newTable = new GenTable<>(rh, tableName, hasHeader);
-				tables.add(newTable);
+				if (rh.size() > 0) {
+					StringTable newTable = new StringTable(rh, tableName, hasHeader);
+					tables.add(newTable);
+				}
 			});
+	}
+	
+	
+	public final void trimTables() {
+		if (tables != null) {
+			tables.removeIf(e -> e == null || e.getLength() == 0);
+		}
+	}
+	
+	
+	public final void trimTables(Function<StringTable, Boolean> function) {
+		if (tables != null) {
+			tables.removeIf(e -> function.apply(e));
+		}
 	}
 	
 	
@@ -350,25 +458,26 @@ public abstract class CachedSoup {
 	private void formatStrings(String[] string) {
 		for (int i = 0; i < string.length; i++) {
 			try {
-				string[i] = formatString(string[i]);
+				string[i] = removeHtmlCharCodes(string[i]);
 			} catch (Exception e) {}
 		}
 	}
 	
 	
-	private String formatString(String string) {
+	public static String removeHtmlCharCodes(String string) {
 		return string.replace("&amp;", "&")
 					 .replace("&nbsp;", " ")
+					 .replace("&quot;", "\"")
 					 .replace("&#x27;", "'");
 	}
 	
 	
-	public GenTable<String> getTableByName(String name) {
+	public StringTable getTableByName(String name) {
 		if (tables != null) {
-			for (GenTable<String> t : tables) {
+			for (StringTable t : tables) {
 				if (t.getName().equals(name))
 					return t;
-				GenTable<String> table = t.getChildByName(name);
+				StringTable table = t.getChildByName(name);
 				if (table != null)
 					return t;
 			}
@@ -379,7 +488,7 @@ public abstract class CachedSoup {
 	
 	public void printTables() {
 		if (tables != null) {
-			for (GenTable<?> table : tables) {
+			for (StringTable table : tables) {
 				table.printTable();
 			}
 		}
@@ -408,8 +517,12 @@ public abstract class CachedSoup {
 	
 	
 	public final boolean isErrDoc() {
+		return isErrDoc(getPage());
+	}
+	
+	
+	public final boolean isErrDoc(Document page) {
 		try {
-			Document page = getPage();
 			boolean title = page.title().equals("CachedSoup Generated Document");
 			
 			Element response = page.getElementsByTag("response").get(0);
@@ -438,10 +551,11 @@ public abstract class CachedSoup {
 	public static class Options {
 		public static boolean workOffline = false;
 		public static boolean refresh = false;
+		public static boolean readOnly = false;
 	}
 	
 	
-	public static class DbgFlags {
+	public static class Debug {
 		public static boolean verboseIO = false;
 		public static boolean verboseLoad = false;
 	}
