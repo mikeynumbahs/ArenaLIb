@@ -7,6 +7,13 @@ import java.util.Calendar;
 import java.util.TimeZone;
 
 public interface DateTools {
+	static long millisecond = 1;
+	static long second = millisecond*1000;
+	static long minute = second*60;
+	static long hour = minute*60;
+	static long day = hour*24;
+	static long year = day*365;
+	
 	static SimpleDateFormat SQL_DATE_TIME = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 	static SimpleDateFormat SQL_DATE = new SimpleDateFormat("yyyy-MM-dd");
 	
@@ -129,6 +136,7 @@ public interface DateTools {
 		return makeCalendar(Integer.valueOf(vals[0]), Integer.valueOf(vals[1]), Integer.valueOf(vals[2]));
 	}
 	
+	
 	public static void setTime(Calendar cal, String hhmmss) {
 		String[] fields = hhmmss.split(":");
 		cal.set(Calendar.HOUR_OF_DAY, Integer.valueOf(fields[0].replace(":", "")));
@@ -148,21 +156,21 @@ public interface DateTools {
 	public static Calendar inc(Calendar cal, int numOfDays) {
 		Calendar original = (Calendar)cal.clone();
 		
-		cal.set(Field.DAY_OF_MONTH.getCalendarField(), 
-				cal.get(Field.DAY_OF_MONTH.getCalendarField())+numOfDays);
+		Calendar clone = Calendar.getInstance();
+		clone.setTimeInMillis(original.getTimeInMillis());
+		clone.add(Calendar.DAY_OF_MONTH, numOfDays);
 		
-		if (DateTools.sameDay(original, cal)) {
-			cal.set(Field.DAY_OF_MONTH.getCalendarField(), 
-					cal.get(Field.DAY_OF_MONTH.getCalendarField())+numOfDays+1);
-		}
+		cal.setTimeInMillis(cal.getTimeInMillis() + numOfDays*day);
+		cal.set(clone.get(Calendar.YEAR), clone.get(Calendar.MONTH), clone.get(Calendar.DATE));
+		
 		return cal;
 	}
 	
+	
 	public static Calendar dec(Calendar cal, int numOfDays) {
-		cal.set(Field.DAY_OF_MONTH.getCalendarField(), 
-				cal.get(Field.DAY_OF_MONTH.getCalendarField())-numOfDays);
-		return cal;
+		return inc(cal, -numOfDays);
 	}
+	
 	
 	public static Calendar incYear(Calendar cal) {
 		return incYear(cal, 1);
@@ -173,15 +181,18 @@ public interface DateTools {
 	}
 	
 	public static Calendar incYear(Calendar cal, int numOfYears) {
-		cal.set(Field.YEAR.getCalendarField(), 
-				cal.get(Field.YEAR.getCalendarField())+numOfYears);
+		Calendar clone = Calendar.getInstance();
+		clone.set(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DATE));
+		clone.setTimeInMillis(cal.getTimeInMillis());
+		clone.add(Calendar.YEAR, numOfYears);
+		cal.setTimeInMillis(clone.getTimeInMillis());
+		cal.set(clone.get(Calendar.YEAR), clone.get(Calendar.MONTH), clone.get(Calendar.DATE));
+
 		return cal;
 	}
 	
 	public static Calendar decYear(Calendar cal, int numOfYears) {
-		cal.set(Field.YEAR.getCalendarField(), 
-				cal.get(Field.YEAR.getCalendarField())-numOfYears);
-		return cal;
+		return incYear(cal, -numOfYears);
 	}
 
 	public static Calendar inc365(Calendar cal) {
@@ -217,6 +228,19 @@ public interface DateTools {
 		if (day1 == day2 && mo1 == mo2 && yr1 == yr2) return true;
 		return false;
 	}
+	
+	
+
+	public static boolean onOrAfter(Calendar comp, Calendar onOrAfter) {
+		return sameDay(comp, onOrAfter) || comp.after(onOrAfter);
+		
+	}
+	
+	
+	public static boolean onOrBefore(Calendar comp, Calendar onOrBefore) {
+		return sameDay(comp, onOrBefore) || comp.before(onOrBefore);
+	}
+	
 	
 	/**
 	 * <p> A method to determine if a Calendar day falls on a weekend. </p>
@@ -264,5 +288,4 @@ public interface DateTools {
 		return (Calendar)start.clone();
 		
 	}
-	
 }
