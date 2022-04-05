@@ -30,12 +30,22 @@ public interface SimpleFile {
 	}
 	
 	
+	static boolean write(String filename, Double[] data) {
+		return write(filename, data, true);
+	}
+	
+	
 	static boolean writeCsv(String filename, List<List<String>> data) {
 		return write(filename, SimpleFile.<String>arrayToString(data), true);
 	}
 	
 	
 	static boolean write(String filename, String[] data, boolean overWrite) {
+		return write(filename, arrayToString(data), overWrite);
+	}
+	
+	
+	static boolean write(String filename, Double[] data, boolean overWrite) {
 		return write(filename, arrayToString(data), overWrite);
 	}
 	
@@ -219,6 +229,7 @@ public interface SimpleFile {
 			}
 			string += line + "\n";
 		}
+	
 		return string;
 	}
 	
@@ -243,8 +254,9 @@ public interface SimpleFile {
 		else Console.println("\t" + e.getMessage());
 	}
 	
+	
 	public static class Options {
-		static boolean verbose = false;
-		static boolean stacktrace = false;
+		public static boolean verbose = false;
+		public static boolean stacktrace = false;
 	}
 }

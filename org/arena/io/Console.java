@@ -49,7 +49,7 @@ public interface Console {
 	static void printf(String format, Number... numbers) {
 		printf(format, (Object[])numbers);
 	}
-	
+
 	static void append(CharSequence c) {
 		System.out.append(c);
 	}
@@ -62,14 +62,23 @@ public interface Console {
 		System.out.append(object.toString());
 	}
 	
-	static String getInput() throws IOException {
-		BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-		return reader.readLine();
+	static String getInput() {
+		try {
+			BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+			return reader.readLine();
+		} catch (IOException badio) {
+			return null;
+		}
 	}
 	
-	static String getInput(String msg) throws IOException {
-		print(msg);
-		BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
-		return reader.readLine();
+	
+	static String getInput(String msg) {
+		try {
+			print(msg);
+			BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+			return reader.readLine();
+		} catch (IOException badio) {
+			return null;
+		}
 	}
 }
